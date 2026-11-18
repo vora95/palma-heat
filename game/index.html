@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Palma Heat — open-world crime game</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a0f1e;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #fff; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
+  .panel { background: rgba(12, 8, 20, 0.72); border: 1px solid rgba(255, 190, 90, 0.35);
+    border-radius: 8px; backdrop-filter: blur(2px); }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 5; }
+  /* top-left: wanted + police response */
+  #wanted-box { position: absolute; top: 12px; left: 12px; padding: 8px 12px; min-width: 210px; }
+  #wanted-label { font-size: 11px; letter-spacing: 3px; color: #ffb84d; font-weight: 700; }
+  #wanted-stars { font-size: 22px; letter-spacing: 2px; color: #ffd23e; line-height: 1.1;
+    text-shadow: 0 0 8px rgba(255, 210, 62, 0.7); }
+  #wanted-stars .off { color: rgba(255,255,255,0.25); text-shadow: none; }
+  #response-panel { margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 6px; }
+  #response-panel h4 { font-size: 10px; letter-spacing: 2px; color: #9fd8ff; margin-bottom: 4px; }
+  .unit { font-size: 12px; line-height: 1.5; color: #e8f2ff; }
+  .unit b { color: #fff; } .unit .dist { color: #9fd8ff; } .unit .st { color: #ffb84d; }
+  /* top-center: clock / district / radio */
+  #top-center { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    padding: 7px 16px; text-align: center; }
+  #clock { font-size: 17px; font-weight: 700; letter-spacing: 1px; }
+  #district { font-size: 11px; color: #ffb84d; letter-spacing: 2px; text-transform: uppercase; }
+  #radio { font-size: 11px; color: #9fd8ff; margin-top: 2px; }
+  /* top-right: rep / cash */
+  #top-right { position: absolute; top: 12px; right: 12px; padding: 8px 12px; text-align: right; }
+  #cash { font-size: 18px; font-weight: 700; color: #7dff9a; }
+  #rep-bar { width: 150px; height: 8px; background: rgba(255,255,255,0.18); border-radius: 4px; margin-top: 4px; }
+  #rep-fill { height: 100%; width: 30%; background: linear-gradient(90deg, #ff9a3d, #ffd23e); border-radius: 4px; }
+  #rep-label { font-size: 11px; color: #ffd23e; margin-top: 3px; }
+  /* dialogue: right side, clear of the chase ahead */
+  #dialogue { position: absolute; top: 150px; right: 12px; width: 330px; padding: 10px; display: none; }
+  #dialogue .who { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+  #portrait { width: 56px; height: 56px; border-radius: 6px; border: 2px solid #ffb84d; background: #222; }
+  #dlg-name { font-size: 15px; font-weight: 700; color: #ffb84d; }
+  #dlg-role { font-size: 11px; color: #9fd8ff; }
+  #dlg-text { font-size: 13.5px; line-height: 1.45; color: #f2f2f2; min-height: 54px; }
+  #dlg-hint { font-size: 11px; color: #9fd8ff; text-align: right; margin-top: 6px; }
+  /* bottom-left: minimap + objective */
+  #map-box { position: absolute; left: 12px; bottom: 12px; padding: 8px; }
+  #minimap { display: block; width: 200px; height: 200px; border-radius: 6px;
+    background: #141021; border: 1px solid rgba(255,255,255,0.25); }
+  #objective { margin-top: 6px; max-width: 210px; font-size: 12.5px; line-height: 1.4; color: #ffe9b0; }
+  #objective b { color: #ffd23e; }
+  /* bottom-right: speed + car + weapons */
+  #drive-box { position: absolute; right: 12px; bottom: 12px; padding: 10px 14px; text-align: right; min-width: 230px; }
+  #speed { font-size: 40px; font-weight: 800; line-height: 1; color: #fff; }
+  #speed small { font-size: 14px; color: #ffb84d; font-weight: 600; }
+  #car-name { font-size: 13px; color: #ffd23e; font-weight: 700; margin-top: 2px; }
+  #car-cond { width: 100%; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; margin-top: 5px; }
+  #car-cond-fill { height: 100%; width: 100%; background: #7dff9a; border-radius: 4px; }
+  #weapons { margin-top: 7px; font-size: 12px; color: #dfeaff; }
+  #weapons .sel { color: #ffd23e; font-weight: 700; }
+  /* bottom-center hint + toast */
+  #hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 11.5px; color: rgba(255,255,255,0.75); background: rgba(0,0,0,0.45);
+    padding: 5px 12px; border-radius: 20px; }
+  #toast { position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
+    padding: 12px 22px; font-size: 18px; font-weight: 700; color: #ffd23e; display: none;
+    text-align: center; }
+  #toast small { display: block; font-size: 13px; color: #fff; font-weight: 400; margin-top: 3px; }
+  /* title + pause overlays */
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(180deg, rgba(26,8,32,0.55), rgba(10,4,18,0.88)); }
+  .screen h1 { font-size: 64px; letter-spacing: 6px; color: #ffd23e;
+    text-shadow: 0 0 24px rgba(255, 150, 40, 0.8), 0 4px 0 rgba(0,0,0,0.4); }
+  .screen h2 { font-size: 18px; letter-spacing: 8px; color: #ff9a3d; margin-top: 2px; }
+  .screen p { max-width: 560px; font-size: 14.5px; line-height: 1.6; color: #f0e6d8; margin-top: 18px; }
+  .screen .keys { margin-top: 16px; font-size: 13px; color: #9fd8ff; line-height: 1.9; }
+  .screen .cta { margin-top: 22px; font-size: 16px; font-weight: 700; color: #1a0f1e;
+    background: #ffd23e; padding: 10px 26px; border-radius: 30px; letter-spacing: 1px; }
+  #screen-pause { display: none; }
+  #screen-pause h1 { font-size: 44px; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <div id="wanted-box" class="panel">
+    <div id="wanted-label">WANTED LEVEL</div>
+    <div id="wanted-stars"></div>
+    <div id="response-panel"><h4>POLICE RESPONSE</h4><div id="units"></div></div>
+  </div>
+  <div id="top-center" class="panel">
+    <div id="clock">18:42</div>
+    <div id="district">Marina Bay</div>
+    <div id="radio">♪ PALMA FM 98.6 — Sunset Drive</div>
+  </div>
+  <div id="top-right" class="panel">
+    <div id="cash">$1,240</div>
+    <div id="rep-bar"><div id="rep-fill"></div></div>
+    <div id="rep-label">REP Lv 3 — 1,240 XP</div>
+  </div>
+  <div id="dialogue" class="panel">
+    <div class="who"><canvas id="portrait" width="112" height="112"></canvas>
+      <div><div id="dlg-name">Lucía</div><div id="dlg-role">Fixer — Marina Bay</div></div></div>
+    <div id="dlg-text"></div>
+    <div id="dlg-hint">E ▸ lanjut</div>
+  </div>
+  <div id="map-box" class="panel">
+    <canvas id="minimap" width="400" height="400"></canvas>
+    <div id="objective"><b>Objective:</b> <span id="objective-text"></span></div>
+  </div>
+  <div id="drive-box" class="panel">
+    <div id="speed">0 <small>KM/H</small></div>
+    <div id="car-name">ON FOOT</div>
+    <div id="car-cond"><div id="car-cond-fill"></div></div>
+    <div id="weapons"></div>
+  </div>
+  <div id="hint">W A S D gerak &nbsp;·&nbsp; E masuk / keluar mobil &nbsp;·&nbsp; F tinju &nbsp;·&nbsp; 1–4 senjata &nbsp;·&nbsp; P jeda &nbsp;·&nbsp; M radio</div>
+  <div id="toast" class="panel"></div>
+</div>
+
+<div id="screen-title" class="screen">
+  <h1>PALMA HEAT</h1>
+  <h2>SUNSET CITY &nbsp;·&nbsp; OPEN WORLD</h2>
+  <p>Palma — kota pantai tempat matahari tak pernah benar-benar tenggelam.
+  Curi mobil, kabur dari polisi, dan kerjakan enam kontrak untuk Lucía.
+  Semua jalan milikmu. Semua mobil bisa dicuri. Semua polisi bisa dikalahkan.</p>
+  <div class="keys">W A S D — gerak / nyetir &nbsp;·&nbsp; E — masuk &amp; keluar mobil &nbsp;·&nbsp; F — tinju<br>
+  1–4 — ganti senjata &nbsp;·&nbsp; Klik — tembak &nbsp;·&nbsp; Shift — lari &nbsp;·&nbsp; P — jeda &nbsp;·&nbsp; M — ganti radio</div>
+  <div class="cta">TEKAN ENTER UNTUK MULAI</div>
+</div>
+
+<div id="screen-pause" class="screen">
+  <h1>JEDA</h1>
+  <p>Progres tersimpan otomatis. Polisi tidak akan menunggumu.</p>
+  <div class="cta">TEKAN P UNTUK LANJUT</div>
+</div>
+
+<script src="./vendor/three.min.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
